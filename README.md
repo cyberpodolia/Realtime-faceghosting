@@ -6,7 +6,7 @@ Windows Python FaceMesh patch-warp MVP (scaffold + core helpers).
 
 - Patch images are scanned once at startup. Only images with a detectable face are used.
 - If a patch has no detected face, it is skipped; if none qualify, a noise fallback is used.
-- Runtime warping uses patch landmarks > live face landmarks (not bbox resize).
+- Runtime warping uses patch landmarks -> live face landmarks (not bbox resize).
 
 ## Architecture
 
@@ -45,12 +45,21 @@ Dev deps (gates):
 python -m pip install -r facefx/requirements-dev.txt
 ```
 
+If you see `AttributeError: module 'mediapipe' has no attribute 'solutions'`,
+reinstall with the pinned version in `facefx/requirements.txt`.
+
 ## Run
 
 Preferred (from repo root):
 
 ```
 python -m facefx.main
+```
+
+Also works (from inside `facefx/`):
+
+```
+python .\main.py
 ```
 
 Second camera:

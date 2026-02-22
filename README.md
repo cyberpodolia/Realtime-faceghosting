@@ -1,12 +1,16 @@
-# FaceFX (MVP scaffold)
+# FaceFX (real-time patch-warp pipeline)
 
-Windows Python FaceMesh patch-warp MVP (scaffold + core helpers).
+Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with runtime performance knobs.
 
 ## Current status
 
 - Patch images are scanned once at startup. Only images with a detectable face are used.
 - If a patch has no detected face, it is skipped; if none qualify, a noise fallback is used.
 - Runtime warping uses patch landmarks -> live face landmarks (not bbox resize).
+- Color + shading match is applied in ROI for better blending.
+- Runtime topology supports cached Delaunay (`frozen`) and fixed MediaPipe tessellation (`mediapipe`).
+- Region-limited warping and ROI buffers reduce per-frame work while preserving default visuals.
+- Optional on-screen profiling overlay is available for FPS/stage timing.
 
 ## Architecture
 
@@ -22,9 +26,9 @@ facefx/
     __init__.py           # exports
     facemesh.py           # MediaPipe FaceMesh wrapper (live + static)
     regions.py            # region masks
-    triangulation.py      # Delaunay triangulation
+    triangulation.py      # Delaunay + cached/fixed topology helpers
     warp.py               # piecewise affine warp
-    blend.py              # feather blend/composite
+    blend.py              # feather blend/composite + color match
     patchbank.py          # patch loader + landmark cache
     ui.py                 # minimal UI helpers
   tests/
@@ -45,8 +49,23 @@ Dev deps (gates):
 python -m pip install -r facefx/requirements-dev.txt
 ```
 
-If you see `AttributeError: module 'mediapipe' has no attribute 'solutions'`,
-reinstall with the pinned version in `facefx/requirements.txt`.
+## Performance hotspots (before optimization)
+
+Primary costs in the original pipeline:
+
+- per-frame SciPy `Delaunay(...)` on full landmark sets (`468/478` points)
+- Python loop over all triangles (`warpAffine` + mask blend per triangle)
+- full-frame region masks / intermediates each frame
+- LAB color matching with repeated `meanStdDev` calls
+
+Implemented optimizations in this repo:
+
+- cached triangulation (`--topology frozen`) or fixed MediaPipe topology (`--topology mediapipe`)
+- region subset triangle filtering (`--region`)
+- ROI-buffer pipeline for masks/warp/blend
+- downscaled FaceMesh input (`--scale`)
+- optional reduced color-match cadence (`--color-match-every`)
+- optional shading disable (`--shading off`)
 
 ## Run
 
@@ -56,10 +75,11 @@ Preferred (from repo root):
 python -m facefx.main
 ```
 
-Also works (from inside `facefx/`):
+Show CLI options (non-interactive smoke-safe):
 
 ```
-python .\main.py
+python -m facefx.main --help
+python -m facefx.main --dry-run
 ```
 
 Second camera:
@@ -68,7 +88,117 @@ Second camera:
 python -m facefx.main --camera 1
 ```
 
+## Performance knobs
+
+Common speed-first preset (CPU):
+
+```
+python -m facefx.main --scale 0.5 --refine-landmarks off --topology frozen --region all --color-match-every 2 --shading off
+```
+
+Show per-stage timings and FPS overlay:
+
+```
+python -m facefx.main --profile
+```
+
+Non-interactive smoke/dry-run:
+
+```
+python -m facefx.main --dry-run
+```
+
+## CUDA (optional)
+
+This project does not have a "switch" that makes the whole pipeline run on CUDA.
+
+Notes:
+- MediaPipe FaceMesh (Python) is typically CPU-bound.
+- The warp pipeline uses many small per-triangle warps; pushing those to GPU is non-trivial and may not be faster.
+- A small subset of operations can use OpenCV CUDA when available (example: large Gaussian blurs for shading).
+
+Enable optional CUDA accelerations:
+
+```
+python -m facefx.main --device cuda
+```
+
+Verify whether your OpenCV is CUDA-enabled:
+
+```
+python -c "import cv2; print(getattr(cv2.cuda,'getCudaEnabledDeviceCount', lambda: 0)())"
+```
+
+If this prints `0`, your OpenCV build is not CUDA-enabled (the default `opencv-python` wheel is CPU-only). You'll need a CUDA-enabled OpenCV build to use `--device cuda`.
+
 OBS: capture the app window.
+
+## CLI performance knobs
+
+Current runtime flags (defaults preserve prior behavior as closely as possible):
+
+- `--profile` (default `off`): show FPS/frame time and stage timings on-screen
+- `--scale <float>` (default `1.0`): run FaceMesh on downscaled frame and scale landmarks back (`0 < scale <= 1.0`)
+- `--refine-landmarks {on,off}` (default `on`): MediaPipe refined landmarks (iris points)
+- `--topology {frozen,mediapipe}` (default `frozen`)
+  - `frozen`: compute Delaunay once and reuse simplices
+  - `mediapipe`: fixed triangle list derived from MediaPipe tessellation (no runtime Delaunay)
+- `--region {forehead,eyes,mouth,all}` (default `all`): limits masks and triangle loop to selected region(s)
+- `--color-match-every N` (default `1`): run LAB color match every `N` frames
+- `--shading {on,off}` (default `on`): enable/disable low-frequency L-channel shading transfer
+
+## Profiling overlay
+
+Enable with:
+
+```
+python -m facefx.main --profile
+```
+
+Overlay includes smoothed FPS / frame ms and stage timings:
+
+- `capture`
+- `facemesh`
+- `masks`
+- `warp`
+- `color_match`
+- `blend`
+- `display`
+
+## Recommended presets
+
+These are starting points. Tune for your camera / CPU / GPU / patch sizes.
+
+- Target: `640x480 30fps` (your current target, CUDA-capable GPU system; pipeline remains CPU-heavy)
+  - `python -m facefx.main --topology mediapipe --region all --scale 0.75 --profile`
+- `720p 60fps` (aggressive quality/perf tradeoff)
+  - `python -m facefx.main --scale 0.5 --refine-landmarks off --topology mediapipe --color-match-every 2 --shading off --profile`
+- `1080p 30fps` CPU-oriented preset
+  - `python -m facefx.main --scale 0.5 --refine-landmarks off --topology mediapipe --region all --color-match-every 2 --profile`
+- `1080p 30fps` quality-first
+  - `python -m facefx.main --scale 0.75 --topology frozen --color-match-every 1 --shading on --profile`
+
+## Color + shading match
+
+- Per-frame, ROI-only color transfer in LAB using masked mean/std.
+- Optional shading match on L channel via low-frequency ratio.
+- Additional runtime cadence/toggle:
+  - `--color-match-every`
+  - `--shading`
+- Code-level tunables in `facefx/main.py`:
+  - `COLOR_MATCH_AB` (0.3-0.7 recommended)
+  - `SHADING_KERNEL` (31-81 typical)
+  - `SHADING_CLAMP` (e.g., `0.6..1.6`)
+
+## Smoke / gates (non-interactive)
+
+Useful smoke commands for local verification:
+
+```
+python -m compileall -q facefx
+python -c "import cv2, mediapipe, numpy; import scipy"
+python -m facefx.main --help
+```
 
 ## Notes
 

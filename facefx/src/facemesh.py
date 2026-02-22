@@ -37,9 +37,25 @@ class FaceMeshTracker:
             min_tracking_confidence=self.min_tracking_confidence,
         )
 
-    def process_bgr(self, frame_bgr: np.ndarray) -> np.ndarray | None:
+    def process_bgr(self, frame_bgr: np.ndarray, *, scale: float = 1.0) -> np.ndarray | None:
         """Return landmark array (N,2) in pixel coords, or None if no face."""
-        return self._process(frame_bgr, self._face_mesh)
+        if frame_bgr is None or frame_bgr.size == 0:
+            return None
+        if scale <= 0:
+            raise ValueError("scale must be > 0")
+        if scale >= 0.999:
+            return self._process(frame_bgr, self._face_mesh)
+
+        h, w = frame_bgr.shape[:2]
+        sw = max(1, int(round(w * scale)))
+        sh = max(1, int(round(h * scale)))
+        small = cv2.resize(frame_bgr, (sw, sh), interpolation=cv2.INTER_LINEAR)
+        pts = self._process(small, self._face_mesh)
+        if pts is None:
+            return None
+        pts[:, 0] *= w / float(sw)
+        pts[:, 1] *= h / float(sh)
+        return pts
 
     def process_bgr_static(self, image_bgr: np.ndarray) -> np.ndarray | None:
         """Return landmarks for a still image, or None if no face."""

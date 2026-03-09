@@ -2,11 +2,25 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import cv2
 import numpy as np
 
-
 _CUDA_GAUSS_FILTERS_F32: dict[int, object] = {}
+
+
+@dataclass(frozen=True)
+class ColorTransferStateLab:
+    src_mean: np.ndarray
+    src_std: np.ndarray
+    tgt_mean: np.ndarray
+    tgt_std: np.ndarray
+
+
+@dataclass(frozen=True)
+class ShadingStateLab:
+    ratio_l: np.ndarray
 
 
 def _cuda_gaussian_blur_f32(channel_f32: np.ndarray, k: int) -> np.ndarray:
@@ -62,6 +76,132 @@ def _mask_to_u8(mask: np.ndarray) -> np.ndarray:
 def _masked_mean_std_lab(lab: np.ndarray, mask_u8: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     mean, std = cv2.meanStdDev(lab, mask=mask_u8)
     return mean.reshape(3).astype(np.float32), std.reshape(3).astype(np.float32)
+
+
+def build_color_transfer_state_lab(
+    src_bgr: np.ndarray,
+    tgt_bgr: np.ndarray,
+    mask: np.ndarray,
+) -> ColorTransferStateLab | None:
+    mask_u8 = _mask_to_u8(mask)
+    if cv2.countNonZero(mask_u8) == 0:
+        return None
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    tgt_lab = cv2.cvtColor(tgt_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    src_mean, src_std = _masked_mean_std_lab(src_lab, mask_u8)
+    tgt_mean, tgt_std = _masked_mean_std_lab(tgt_lab, mask_u8)
+    return ColorTransferStateLab(
+        src_mean=src_mean,
+        src_std=src_std,
+        tgt_mean=tgt_mean,
+        tgt_std=tgt_std,
+    )
+
+
+def apply_color_transfer_state_lab(
+    src_bgr: np.ndarray,
+    state: ColorTransferStateLab,
+    *,
+    ab_strength: float = 0.5,
+    eps: float = 1e-6,
+) -> np.ndarray:
+    if not (0.0 <= ab_strength <= 1.0):
+        raise ValueError("ab_strength must be in [0, 1]")
+    if eps <= 0.0:
+        raise ValueError("eps must be > 0")
+
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    scale = state.tgt_std / (state.src_std + eps)
+    out_lab = (src_lab - state.src_mean.reshape(1, 1, 3)) * scale.reshape(
+        1, 1, 3
+    ) + state.tgt_mean.reshape(1, 1, 3)
+    if ab_strength < 1.0:
+        target_a = float(state.tgt_mean[1])
+        target_b = float(state.tgt_mean[2])
+        out_lab[:, :, 1] = target_a + (out_lab[:, :, 1] - target_a) * ab_strength
+        out_lab[:, :, 2] = target_b + (out_lab[:, :, 2] - target_b) * ab_strength
+    out_lab_u8 = np.clip(out_lab, 0.0, 255.0).astype(np.uint8)
+    return cv2.cvtColor(out_lab_u8, cv2.COLOR_LAB2BGR)
+
+
+def apply_shading_l_channel_lab(
+    src_bgr: np.ndarray,
+    tgt_bgr: np.ndarray,
+    *,
+    shading_kernel: int = 51,
+    shading_clamp: tuple[float, float] = (0.6, 1.6),
+    eps: float = 1e-6,
+    use_cuda: bool = False,
+) -> np.ndarray:
+    """Apply L-channel shading transfer from target to source."""
+    if shading_kernel < 1:
+        raise ValueError("shading_kernel must be >= 1")
+    if shading_clamp[0] <= 0.0 or shading_clamp[0] > shading_clamp[1]:
+        raise ValueError("invalid shading_clamp range")
+    if eps <= 0.0:
+        raise ValueError("eps must be > 0")
+
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    tgt_lab = cv2.cvtColor(tgt_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    src_l = src_lab[:, :, 0]
+    tgt_l = tgt_lab[:, :, 0]
+
+    k = max(3, int(shading_kernel) | 1)
+    if use_cuda:
+        blur_t = _cuda_gaussian_blur_f32(tgt_l, k)
+        blur_s = _cuda_gaussian_blur_f32(src_l, k)
+    else:
+        blur_t = cv2.GaussianBlur(tgt_l, (k, k), 0)
+        blur_s = cv2.GaussianBlur(src_l, (k, k), 0)
+
+    ratio = (blur_t + eps) / (blur_s + eps)
+    ratio = np.clip(ratio, shading_clamp[0], shading_clamp[1])
+    src_lab[:, :, 0] = np.clip(src_l * ratio, 0.0, 255.0)
+    out = np.clip(src_lab, 0.0, 255.0).astype(np.uint8)
+    return cv2.cvtColor(out, cv2.COLOR_LAB2BGR)
+
+
+def build_shading_state_lab(
+    src_bgr: np.ndarray,
+    tgt_bgr: np.ndarray,
+    *,
+    shading_kernel: int = 51,
+    shading_clamp: tuple[float, float] = (0.6, 1.6),
+    eps: float = 1e-6,
+    use_cuda: bool = False,
+) -> ShadingStateLab:
+    if shading_kernel < 1:
+        raise ValueError("shading_kernel must be >= 1")
+    if shading_clamp[0] <= 0.0 or shading_clamp[0] > shading_clamp[1]:
+        raise ValueError("invalid shading_clamp range")
+    if eps <= 0.0:
+        raise ValueError("eps must be > 0")
+
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    tgt_lab = cv2.cvtColor(tgt_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    src_l = src_lab[:, :, 0]
+    tgt_l = tgt_lab[:, :, 0]
+
+    k = max(3, int(shading_kernel) | 1)
+    if use_cuda:
+        blur_t = _cuda_gaussian_blur_f32(tgt_l, k)
+        blur_s = _cuda_gaussian_blur_f32(src_l, k)
+    else:
+        blur_t = cv2.GaussianBlur(tgt_l, (k, k), 0)
+        blur_s = cv2.GaussianBlur(src_l, (k, k), 0)
+
+    ratio = (blur_t + eps) / (blur_s + eps)
+    ratio = np.clip(ratio, shading_clamp[0], shading_clamp[1]).astype(np.float32)
+    return ShadingStateLab(ratio_l=ratio)
+
+
+def apply_shading_state_lab(src_bgr: np.ndarray, state: ShadingStateLab) -> np.ndarray:
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    if src_lab.shape[:2] != state.ratio_l.shape:
+        raise ValueError("shading state shape must match source shape")
+    src_lab[:, :, 0] = np.clip(src_lab[:, :, 0] * state.ratio_l, 0.0, 255.0)
+    out = np.clip(src_lab, 0.0, 255.0).astype(np.uint8)
+    return cv2.cvtColor(out, cv2.COLOR_LAB2BGR)
 
 
 def color_match_lab(

@@ -16,11 +16,17 @@ if __package__ in (None, ""):
 import cv2
 import numpy as np
 
-from facefx.src.blend import blend_with_mask, color_match_lab
+from facefx.src.blend import (
+    apply_color_transfer_state_lab,
+    apply_shading_state_lab,
+    blend_with_mask,
+    build_color_transfer_state_lab,
+    build_shading_state_lab,
+)
+from facefx.src.device import resolve_device
 from facefx.src.facemesh import FaceMeshTracker
 from facefx.src.patchbank import PatchBank, PatchFace, fallback_patch, load_patch_faces
 from facefx.src.regions import feather_mask, region_polygon
-from facefx.src.device import resolve_device
 from facefx.src.triangulation import TopologyCache, triangulate
 from facefx.src.ui import draw_label, wait_key
 from facefx.src.warp import warp_triangle
@@ -316,7 +322,8 @@ def main() -> int:
             f"refine_landmarks={args.refine_landmarks}, topology={args.topology}, "
             "region="
             f"{args.region}, color_match_every={args.color_match_every}, "
-            f"shading={args.shading}, device={device_info.name}, cuda_available={device_info.cuda_available})"
+            f"shading={args.shading}, device={device_info.name}, "
+            f"cuda_available={device_info.cuda_available})"
         )
         return 0
 
@@ -325,6 +332,8 @@ def main() -> int:
     profiler = FrameProfiler(enabled=args.profile)
     frame_index = 0
     topology_cache = TopologyCache()
+    color_state_curr = None
+    shading_state_curr = None
 
     while True:
         profiler.start_frame()
@@ -379,6 +388,8 @@ def main() -> int:
                 pad=FEATHER_PX + 4,
             )
             if region_roi is None:
+                color_state_curr = None
+                shading_state_curr = None
                 profiler.mark("masks")
                 profiler.mark("warp")
                 profiler.mark("color_match")
@@ -453,18 +464,55 @@ def main() -> int:
                 src_roi = warped_canvas_roi[y : y + ch, x : x + cw]
                 tgt_roi = out[ry + y : ry + y + ch, rx + x : rx + x + cw]
                 mask_roi = blend_mask[y : y + ch, x : x + cw]
-                if frame_index % args.color_match_every == 0:
-                    matched = color_match_lab(
-                        src_roi,
-                        tgt_roi,
-                        mask_roi,
-                        ab_strength=COLOR_MATCH_AB,
-                        shading=args.shading == "on",
-                        shading_kernel=SHADING_KERNEL,
-                        shading_clamp=SHADING_CLAMP,
-                        use_cuda=use_cuda,
-                    )
+                needs_refresh = (
+                    frame_index % args.color_match_every == 0
+                    or color_state_curr is None
+                    or shading_state_curr is None
+                    and args.shading == "on"
+                )
+
+                if not needs_refresh and color_state_curr is not None:
+                    needs_refresh = color_state_curr.src_mean.shape[0] != 3
+                if not needs_refresh and shading_state_curr is not None:
+                    needs_refresh = shading_state_curr.ratio_l.shape != src_roi.shape[:2]
+
+                if needs_refresh:
+                    color_state_curr = build_color_transfer_state_lab(src_roi, tgt_roi, mask_roi)
+                    if color_state_curr is not None:
+                        matched = apply_color_transfer_state_lab(
+                            src_roi,
+                            color_state_curr,
+                            ab_strength=COLOR_MATCH_AB,
+                        )
+                    else:
+                        matched = src_roi.copy()
+
+                    if args.shading == "on":
+                        shading_state_curr = build_shading_state_lab(
+                            matched,
+                            tgt_roi,
+                            shading_kernel=SHADING_KERNEL,
+                            shading_clamp=SHADING_CLAMP,
+                            use_cuda=use_cuda,
+                        )
+                        matched = apply_shading_state_lab(matched, shading_state_curr)
+                    else:
+                        shading_state_curr = None
                     warped_canvas_roi[y : y + ch, x : x + cw] = matched
+                else:
+                    held = src_roi.copy()
+                    if color_state_curr is not None:
+                        held = apply_color_transfer_state_lab(
+                            held,
+                            color_state_curr,
+                            ab_strength=COLOR_MATCH_AB,
+                        )
+                    if args.shading == "on" and shading_state_curr is not None:
+                        held = apply_shading_state_lab(held, shading_state_curr)
+                    warped_canvas_roi[y : y + ch, x : x + cw] = held
+            else:
+                color_state_curr = None
+                shading_state_curr = None
             profiler.mark("color_match")
 
             out_roi = out[ry : ry + rh, rx : rx + rw]
@@ -475,6 +523,8 @@ def main() -> int:
             )
             profiler.mark("blend")
         else:
+            color_state_curr = None
+            shading_state_curr = None
             profiler.mark("masks")
             profiler.mark("warp")
             profiler.mark("color_match")
@@ -492,6 +542,8 @@ def main() -> int:
             break
         if key == ord(" "):
             current_patch = _select_patch(bank)
+            color_state_curr = None
+            shading_state_curr = None
         frame_index += 1
 
     cap.release()

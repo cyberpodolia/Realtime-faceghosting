@@ -11,6 +11,43 @@ Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with ru
 - Runtime topology supports cached Delaunay (`frozen`) and fixed MediaPipe tessellation (`mediapipe`).
 - Region-limited warping and ROI buffers reduce per-frame work while preserving default visuals.
 - Optional on-screen profiling overlay is available for FPS/stage timing.
+- New runtime path `facefx.runtime_cuda` is active and supports the current live CUDA-oriented pipeline.
+
+## Runtime CUDA v1 contract
+
+The runtime-only CUDA pipeline contract is frozen in:
+
+- `docs/runtime_cuda_contract.md`
+
+It defines fixed v1 decisions for backend, adaptive ROI, landmark cadence, performance targets, and legacy coexistence requirements.
+
+## Runtime CUDA (current)
+
+Use the new runtime entrypoint:
+
+```
+python -m facefx.runtime_cuda.app
+```
+
+Working live preset (camera `1`) that currently gives about `~30 FPS` on this machine at `720x540`:
+
+```
+python -m facefx.runtime_cuda.app --camera 1 --device cuda --input-width 720 --input-height 540 --camera-fps 30 --profile --debug-overlay roi --landmark-every 1 --landmark-scale 1.0 --landmark-smooth 0.25 --color-match-every 1 --shading-every 3 --composite-backend auto --composite-cuda-min-area 60000
+```
+
+Notes:
+- `M` rotates debug passes (`input -> warp -> alpha -> color -> final`).
+- `N` returns to final pass (recommended for FPS measurement).
+- Camera is hardcoded to index `1` in runtime_cuda.
+
+Validation snapshot (`2026-03-09`):
+- tests: `python -m pytest -q facefx/tests/runtime_cuda` -> `78 passed`
+- tests: `python -m pytest -q facefx/tests` -> `96 passed`
+- camera raw fps (`dshow`, requested `720x540@30`, camera `1`):
+  - actual capture mode: `640x480@30`
+  - `avg_read_fps`: `30.01`
+  - `wall_fps_including_loop`: `29.67`
+  - report: `scripts/baseline_artifacts/20260309T132017Z/camera_raw_fps.json`
 
 ## Architecture
 
@@ -132,6 +169,27 @@ python -c "import cv2; print(getattr(cv2.cuda,'getCudaEnabledDeviceCount', lambd
 If this prints `0`, your OpenCV build is not CUDA-enabled (the default `opencv-python` wheel is CPU-only). You'll need a CUDA-enabled OpenCV build to use `--device cuda`.
 
 OBS: capture the app window.
+
+## Optional native IDW backend (C++)
+
+`facefx/runtime_cuda/warp.py` can use an optional native DLL for dense IDW map building.
+If the DLL is missing, it falls back to NumPy automatically.
+
+Build (Windows, MSVC `cl.exe`):
+
+```
+powershell -ExecutionPolicy Bypass -File scripts/build_runtime_cuda_native.ps1
+```
+
+By default, runtime looks for:
+
+- `facefx/runtime_cuda/native/facefx_runtime_cuda_native.dll`
+
+You can override the path with:
+
+```
+set FACEFX_RUNTIME_NATIVE_DLL=C:\path\to\facefx_runtime_cuda_native.dll
+```
 
 ## CLI performance knobs
 

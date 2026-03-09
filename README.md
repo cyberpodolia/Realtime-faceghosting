@@ -2,7 +2,7 @@
 
 ![FaceFX runtime_cuda live screenshot](facefx.jpg)
 
-Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with runtime performance knobs.
+Research project focused on real-time face-processing pipelines, ROI-first runtime design, and integrating native C++ hot paths into a Python application. The current `runtime_cuda` variant is validated at about `30 FPS` in the `720x540` live preset on the current machine.
 
 ## Current Runtime
 
@@ -10,6 +10,7 @@ Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with ru
 - Main code path: `facefx/runtime_cuda/*`
 - Shared helpers still reused from `facefx/src/*` for FaceMesh tracking and patch loading
 - Status: current active live pipeline
+- Current validated live preset: about `30 FPS` at `720x540`
 - Legacy path still exists in the repo, but it is kept mainly for reference, comparison, and fallback
 
 ## Runtime CUDA v1 contract

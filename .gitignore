@@ -3,3 +3,7 @@
 .venv/
 **/.venv/
 
+# Benchmark screenshots/artifacts
+scripts/baseline_artifacts/**/screenshot_*.png
+scripts/baseline_artifacts/runtime_cuda_roi_overlay.png
+

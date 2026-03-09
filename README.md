@@ -2,26 +2,12 @@
 
 Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with runtime performance knobs.
 
-## Two Variants In This Repo
+## Current Runtime
 
-### Variant 1: legacy pipeline
-
-- Entry point: `python -m facefx.main`
-- Code path: `facefx/main.py` + `facefx/src/*`
-- Status: kept for reference, comparison, and fallback
-- Model: original FaceMesh + triangle warp pipeline with legacy CLI knobs
-
-### Variant 2: runtime_cuda pipeline
-
-- Entry point: `python -m facefx.runtime_cuda.app`
-- Code path: `facefx/runtime_cuda/*`
-- Status: current active runtime path for live work in this repo
-- Model: isolated runtime pipeline with adaptive ROI, cached postprocess state, native triangle warp path, and runtime-specific profiling/debug tools
-
-### Which one to run
-
-- If you need the older pipeline or want to compare against baseline, run `facefx.main`
-- If you need the current live runtime work, run `facefx.runtime_cuda.app`
+- Main runtime in this repo: `python -m facefx.runtime_cuda.app`
+- Main code path: `facefx/runtime_cuda/*`
+- Status: current active live pipeline
+- Legacy path still exists in the repo, but it is kept mainly for reference, comparison, and fallback
 
 ## Runtime CUDA v1 contract
 
@@ -31,7 +17,7 @@ The runtime-only CUDA pipeline contract is frozen in:
 
 It defines fixed v1 decisions for backend, adaptive ROI, landmark cadence, performance targets, and legacy coexistence requirements.
 
-## Variant 2: Runtime CUDA (current)
+## Runtime CUDA (current)
 
 Use the new runtime entrypoint:
 
@@ -63,7 +49,7 @@ Validation snapshot (`2026-03-09`):
 
 ```
 facefx/
-  main.py                 # variant 1 entry point
+  main.py                 # legacy entry point
   requirements.txt        # runtime deps (mediapipe pinned)
   requirements-dev.txt    # gates (ruff/pytest)
   pyproject.toml          # ruff config
@@ -79,7 +65,7 @@ facefx/
     patchbank.py          # patch loader + landmark cache
     ui.py                 # minimal UI helpers
   runtime_cuda/
-    app.py                # variant 2 entry point
+    app.py                # current runtime entry point
     config.py             # runtime-only config
     pipeline.py           # runtime-only pipeline orchestration
     warp.py               # runtime warp helpers
@@ -121,7 +107,20 @@ Implemented optimizations in this repo:
 - optional reduced color-match cadence (`--color-match-every`)
 - optional shading disable (`--shading off`)
 
-## Variant 1: Legacy Run
+## Legacy Pipeline (reference)
+
+The older pipeline is still present for comparison and fallback:
+
+```
+python -m facefx.main
+```
+
+Code path:
+
+- `facefx/main.py`
+- `facefx/src/*`
+
+## Legacy Run
 
 Preferred (from repo root):
 
@@ -142,7 +141,7 @@ Second camera:
 python -m facefx.main --camera 1
 ```
 
-## Variant 1: Performance Knobs
+## Legacy Performance Knobs
 
 Common speed-first preset (CPU):
 
@@ -162,7 +161,7 @@ Non-interactive smoke/dry-run:
 python -m facefx.main --dry-run
 ```
 
-## Variant 1: CUDA (optional)
+## Legacy CUDA (optional)
 
 This project does not have a "switch" that makes the whole pipeline run on CUDA.
 
@@ -187,7 +186,7 @@ If this prints `0`, your OpenCV build is not CUDA-enabled (the default `opencv-p
 
 OBS: capture the app window.
 
-## Variant 2: Optional native IDW backend (C++)
+## Runtime CUDA: Optional native IDW backend (C++)
 
 `facefx/runtime_cuda/warp.py` can use an optional native DLL for dense IDW map building.
 If the DLL is missing, it falls back to NumPy automatically.
@@ -208,7 +207,7 @@ You can override the path with:
 set FACEFX_RUNTIME_NATIVE_DLL=C:\path\to\facefx_runtime_cuda_native.dll
 ```
 
-## Variant 1: CLI performance knobs
+## Legacy CLI performance knobs
 
 Current runtime flags (defaults preserve prior behavior as closely as possible):
 
@@ -222,7 +221,7 @@ Current runtime flags (defaults preserve prior behavior as closely as possible):
 - `--color-match-every N` (default `1`): run LAB color match every `N` frames
 - `--shading {on,off}` (default `on`): enable/disable low-frequency L-channel shading transfer
 
-## Variant 1: Profiling overlay
+## Legacy Profiling overlay
 
 Enable with:
 
@@ -240,7 +239,7 @@ Overlay includes smoothed FPS / frame ms and stage timings:
 - `blend`
 - `display`
 
-## Variant 1: Recommended presets
+## Legacy Recommended presets
 
 These are starting points. Tune for your camera / CPU / GPU / patch sizes.
 
@@ -253,7 +252,7 @@ These are starting points. Tune for your camera / CPU / GPU / patch sizes.
 - `1080p 30fps` quality-first
   - `python -m facefx.main --scale 0.75 --topology frozen --color-match-every 1 --shading on --profile`
 
-## Variant 1: Color + shading match
+## Legacy Color + shading match
 
 - Per-frame, ROI-only color transfer in LAB using masked mean/std.
 - Optional shading match on L channel via low-frequency ratio.

@@ -1,5 +1,7 @@
 # FaceFX (real-time patch-warp pipeline)
 
+![FaceFX runtime_cuda live screenshot](facefx.jpg)
+
 Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with runtime performance knobs.
 
 ## Current Runtime

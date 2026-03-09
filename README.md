@@ -8,6 +8,7 @@ Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with ru
 
 - Main runtime in this repo: `python -m facefx.runtime_cuda.app`
 - Main code path: `facefx/runtime_cuda/*`
+- Shared helpers still reused from `facefx/src/*` for FaceMesh tracking and patch loading
 - Status: current active live pipeline
 - Legacy path still exists in the repo, but it is kept mainly for reference, comparison, and fallback
 
@@ -74,7 +75,8 @@ facefx/
     color.py              # runtime color/shading stage
     composite.py          # runtime composite stage
   tests/
-    test_imports.py        # import smoke test
+    test_imports.py       # legacy/shared smoke test
+    runtime_cuda/         # runtime_cuda-specific tests
 ```
 
 ## Requirements
@@ -91,7 +93,7 @@ Dev deps (gates):
 python -m pip install -r facefx/requirements-dev.txt
 ```
 
-## Performance hotspots (before optimization)
+## Legacy Performance Hotspots (historical)
 
 Primary costs in the original pipeline:
 
@@ -100,7 +102,7 @@ Primary costs in the original pipeline:
 - full-frame region masks / intermediates each frame
 - LAB color matching with repeated `meanStdDev` calls
 
-Implemented optimizations in this repo:
+Implemented legacy-path optimizations in this repo:
 
 - cached triangulation (`--topology frozen`) or fixed MediaPipe topology (`--topology mediapipe`)
 - region subset triangle filtering (`--region`)
@@ -188,9 +190,14 @@ If this prints `0`, your OpenCV build is not CUDA-enabled (the default `opencv-p
 
 OBS: capture the app window.
 
-## Runtime CUDA: Optional native IDW backend (C++)
+## Runtime CUDA: Optional native backend (C++)
 
-`facefx/runtime_cuda/warp.py` can use an optional native DLL for dense IDW map building.
+`facefx/runtime_cuda/warp.py` can use an optional native DLL for:
+
+- dense IDW map building
+- triangle warp acceleration
+
+The current live runtime path mainly benefits from the native triangle warp path.
 If the DLL is missing, it falls back to NumPy automatically.
 
 Build (Windows, MSVC `cl.exe`):
@@ -273,6 +280,7 @@ Useful smoke commands for local verification:
 ```
 python -m compileall -q facefx
 python -c "import cv2, mediapipe, numpy; import scipy"
+python -m facefx.runtime_cuda.app --help
 python -m facefx.main --help
 ```
 

@@ -1,0 +1,33 @@
+{
+  "timestamp_utc": "2026-03-09T09:39:45.420340+00:00",
+  "camera_requested": 1,
+  "camera_used": 1,
+  "requested": {
+    "camera_fallback": false,
+    "resolution": {
+      "width": 1280,
+      "height": 720
+    },
+    "backend": "dshow",
+    "request_fps": 30.0,
+    "fourcc": "MJPG",
+    "auto_exposure": "keep",
+    "exposure": null
+  },
+  "actual": {
+    "resolution": {
+      "width": 1280,
+      "height": 720
+    },
+    "backend": "DSHOW",
+    "reported_fps": 30.00003000003,
+    "fourcc": "YUY2"
+  },
+  "warmup_frames": 60,
+  "measured_frames": 600,
+  "avg_read_ms": 29.43879750207998,
+  "p50_read_ms": 27.44059998076409,
+  "p95_read_ms": 37.3156949703116,
+  "avg_read_fps": 33.96877878348617,
+  "wall_fps_including_loop": 29.363102690869074
+}

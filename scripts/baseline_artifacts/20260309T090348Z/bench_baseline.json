@@ -1,0 +1,60 @@
+{
+  "timestamp_utc": "2026-03-09T09:04:07.850013+00:00",
+  "run_id": "20260309T090348Z",
+  "resolution": {
+    "width": 1280,
+    "height": 720
+  },
+  "device": "cuda",
+  "camera": 0,
+  "warmup_frames": 30,
+  "measured_frames": 180,
+  "runtime_command": "C:\\work\\repo4-Realtime-faceghosting\\.venv\\Scripts\\python.exe -m facefx.main --camera 0 --device cuda --scale 1.0 --topology frozen --region all --color-match-every 1 --shading on --profile",
+  "artifacts": {
+    "screenshots": [
+      "scripts\\baseline_artifacts\\20260309T090348Z\\screenshot_01_frame_0060.png",
+      "scripts\\baseline_artifacts\\20260309T090348Z\\screenshot_02_frame_0120.png",
+      "scripts\\baseline_artifacts\\20260309T090348Z\\screenshot_03_frame_0180.png"
+    ]
+  },
+  "summary": {
+    "frames_measured": 180,
+    "avg_fps": 21.4735300969372,
+    "avg_frame_ms": 46.568961669820254,
+    "p95_frame_ms": 66.87566997716203,
+    "stage_ms_avg": {
+      "capture": 20.41973944546448,
+      "landmarks": 10.539649998665684,
+      "mask": 1.594516107191642,
+      "warp": 0.0035811176834007106,
+      "color": 0.0014644446006665628,
+      "shading": 0.0,
+      "composite": 0.0011522219412856633,
+      "display": 14.003176107588741
+    },
+    "stage_ms_p95": {
+      "capture": 38.58270993223411,
+      "landmarks": 13.23218005127273,
+      "mask": 2.089299948420375,
+      "warp": 0.005799933569505811,
+      "color": 0.002400018274784088,
+      "shading": 0.0,
+      "composite": 0.001500011421740055,
+      "display": 18.574704899219793
+    },
+    "bottlenecks": [
+      {
+        "stage": "capture",
+        "avg_ms": 20.41973944546448
+      },
+      {
+        "stage": "display",
+        "avg_ms": 14.003176107588741
+      },
+      {
+        "stage": "landmarks",
+        "avg_ms": 10.539649998665684
+      }
+    ]
+  }
+}

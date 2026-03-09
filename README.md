@@ -218,7 +218,7 @@ set FACEFX_RUNTIME_NATIVE_DLL=C:\path\to\facefx_runtime_cuda_native.dll
 
 ## Legacy CLI performance knobs
 
-Current runtime flags (defaults preserve prior behavior as closely as possible):
+Legacy runtime flags:
 
 - `--profile` (default `off`): show FPS/frame time and stage timings on-screen
 - `--scale <float>` (default `1.0`): run FaceMesh on downscaled frame and scale landmarks back (`0 < scale <= 1.0`)
@@ -265,7 +265,7 @@ These are starting points. Tune for your camera / CPU / GPU / patch sizes.
 
 - Per-frame, ROI-only color transfer in LAB using masked mean/std.
 - Optional shading match on L channel via low-frequency ratio.
-- Additional runtime cadence/toggle:
+- Additional legacy cadence/toggle:
   - `--color-match-every`
   - `--shading`
 - Code-level tunables in `facefx/main.py`:

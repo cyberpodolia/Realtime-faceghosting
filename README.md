@@ -2,16 +2,26 @@
 
 Windows Python FaceMesh patch-warp pipeline (OpenCV + MediaPipe + SciPy) with runtime performance knobs.
 
-## Current status
+## Two Variants In This Repo
 
-- Patch images are scanned once at startup. Only images with a detectable face are used.
-- If a patch has no detected face, it is skipped; if none qualify, a noise fallback is used.
-- Runtime warping uses patch landmarks -> live face landmarks (not bbox resize).
-- Color + shading match is applied in ROI for better blending.
-- Runtime topology supports cached Delaunay (`frozen`) and fixed MediaPipe tessellation (`mediapipe`).
-- Region-limited warping and ROI buffers reduce per-frame work while preserving default visuals.
-- Optional on-screen profiling overlay is available for FPS/stage timing.
-- New runtime path `facefx.runtime_cuda` is active and supports the current live CUDA-oriented pipeline.
+### Variant 1: legacy pipeline
+
+- Entry point: `python -m facefx.main`
+- Code path: `facefx/main.py` + `facefx/src/*`
+- Status: kept for reference, comparison, and fallback
+- Model: original FaceMesh + triangle warp pipeline with legacy CLI knobs
+
+### Variant 2: runtime_cuda pipeline
+
+- Entry point: `python -m facefx.runtime_cuda.app`
+- Code path: `facefx/runtime_cuda/*`
+- Status: current active runtime path for live work in this repo
+- Model: isolated runtime pipeline with adaptive ROI, cached postprocess state, native triangle warp path, and runtime-specific profiling/debug tools
+
+### Which one to run
+
+- If you need the older pipeline or want to compare against baseline, run `facefx.main`
+- If you need the current live runtime work, run `facefx.runtime_cuda.app`
 
 ## Runtime CUDA v1 contract
 
@@ -21,7 +31,7 @@ The runtime-only CUDA pipeline contract is frozen in:
 
 It defines fixed v1 decisions for backend, adaptive ROI, landmark cadence, performance targets, and legacy coexistence requirements.
 
-## Runtime CUDA (current)
+## Variant 2: Runtime CUDA (current)
 
 Use the new runtime entrypoint:
 
@@ -53,7 +63,7 @@ Validation snapshot (`2026-03-09`):
 
 ```
 facefx/
-  main.py                 # entry point (pipeline wiring)
+  main.py                 # variant 1 entry point
   requirements.txt        # runtime deps (mediapipe pinned)
   requirements-dev.txt    # gates (ruff/pytest)
   pyproject.toml          # ruff config
@@ -68,6 +78,13 @@ facefx/
     blend.py              # feather blend/composite + color match
     patchbank.py          # patch loader + landmark cache
     ui.py                 # minimal UI helpers
+  runtime_cuda/
+    app.py                # variant 2 entry point
+    config.py             # runtime-only config
+    pipeline.py           # runtime-only pipeline orchestration
+    warp.py               # runtime warp helpers
+    color.py              # runtime color/shading stage
+    composite.py          # runtime composite stage
   tests/
     test_imports.py        # import smoke test
 ```
@@ -104,7 +121,7 @@ Implemented optimizations in this repo:
 - optional reduced color-match cadence (`--color-match-every`)
 - optional shading disable (`--shading off`)
 
-## Run
+## Variant 1: Legacy Run
 
 Preferred (from repo root):
 
@@ -125,7 +142,7 @@ Second camera:
 python -m facefx.main --camera 1
 ```
 
-## Performance knobs
+## Variant 1: Performance Knobs
 
 Common speed-first preset (CPU):
 
@@ -145,7 +162,7 @@ Non-interactive smoke/dry-run:
 python -m facefx.main --dry-run
 ```
 
-## CUDA (optional)
+## Variant 1: CUDA (optional)
 
 This project does not have a "switch" that makes the whole pipeline run on CUDA.
 
@@ -170,7 +187,7 @@ If this prints `0`, your OpenCV build is not CUDA-enabled (the default `opencv-p
 
 OBS: capture the app window.
 
-## Optional native IDW backend (C++)
+## Variant 2: Optional native IDW backend (C++)
 
 `facefx/runtime_cuda/warp.py` can use an optional native DLL for dense IDW map building.
 If the DLL is missing, it falls back to NumPy automatically.
@@ -191,7 +208,7 @@ You can override the path with:
 set FACEFX_RUNTIME_NATIVE_DLL=C:\path\to\facefx_runtime_cuda_native.dll
 ```
 
-## CLI performance knobs
+## Variant 1: CLI performance knobs
 
 Current runtime flags (defaults preserve prior behavior as closely as possible):
 
@@ -205,7 +222,7 @@ Current runtime flags (defaults preserve prior behavior as closely as possible):
 - `--color-match-every N` (default `1`): run LAB color match every `N` frames
 - `--shading {on,off}` (default `on`): enable/disable low-frequency L-channel shading transfer
 
-## Profiling overlay
+## Variant 1: Profiling overlay
 
 Enable with:
 
@@ -223,7 +240,7 @@ Overlay includes smoothed FPS / frame ms and stage timings:
 - `blend`
 - `display`
 
-## Recommended presets
+## Variant 1: Recommended presets
 
 These are starting points. Tune for your camera / CPU / GPU / patch sizes.
 
@@ -236,7 +253,7 @@ These are starting points. Tune for your camera / CPU / GPU / patch sizes.
 - `1080p 30fps` quality-first
   - `python -m facefx.main --scale 0.75 --topology frozen --color-match-every 1 --shading on --profile`
 
-## Color + shading match
+## Variant 1: Color + shading match
 
 - Per-frame, ROI-only color transfer in LAB using masked mean/std.
 - Optional shading match on L channel via low-frequency ratio.

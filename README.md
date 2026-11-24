@@ -1,7 +1,5 @@
 # FaceFX (real-time patch-warp pipeline)
 
-![FaceFX runtime_cuda live screenshot](facefx.jpg)
-
 Research project focused on real-time face-processing pipelines, ROI-first runtime design, and integrating native C++ hot paths into a Python application. The current `runtime_cuda` variant is validated at about `30 FPS` in the `720x540` live preset on the current machine.
 
 ## Current Runtime
